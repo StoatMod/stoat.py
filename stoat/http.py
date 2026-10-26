@@ -979,44 +979,48 @@ class HTTPClient:
         rate_limiter = self.rate_limiter
 
         while True:
+            rate_limit: typing.Optional[RateLimit] = None
+            blocker: typing.Optional[RateLimitBlocker] = None
             if rate_limiter:
                 rate_limit = rate_limiter.fetch_ratelimit_for(route, path)
-                if rate_limit:
-                    blocker: typing.Optional[RateLimitBlocker] = None
-                else:
+                if not rate_limit:
                     blocker = rate_limiter.fetch_blocker_for(route, path)
                     await blocker.increment()
 
-                    rate_limit = rate_limiter.fetch_ratelimit_for(route, path)
-
-                if rate_limit:
-                    await rate_limit.block()
-            else:
-                blocker = None
-
-            _L.debug('Sending request to %s %s with %s', method, path, kwargs.get('data'))
-
+            # The blocker must be released however this attempt ends (response, error, cancellation or retry);
+            # otherwise every later request to the same route waits on it forever.
             try:
-                response = await self.send_request(
-                    method=method,
-                    url=url,
-                    headers=headers,
-                    **kwargs,
-                )
-            except OSError as exc:
-                # TODO: Handle 10053?
-                if exc.errno in (
-                    54,  # BSD / Apple
-                    104,  # Linux
-                    10054,  # Windows
-                ):
-                    # Connection reset by peer
-                    await asyncio.sleep(1.5)
-                    continue
-                raise
+                if rate_limiter:
+                    if blocker:
+                        rate_limit = rate_limiter.fetch_ratelimit_for(route, path)
 
-            if rate_limiter:
-                await rate_limiter.on_response(route, path, response)
+                    if rate_limit:
+                        await rate_limit.block()
+
+                _L.debug('Sending request to %s %s with %s', method, path, kwargs.get('data'))
+
+                try:
+                    response = await self.send_request(
+                        method=method,
+                        url=url,
+                        headers=headers,
+                        **kwargs,
+                    )
+                except OSError as exc:
+                    # TODO: Handle 10053?
+                    if exc.errno in (
+                        54,  # BSD / Apple
+                        104,  # Linux
+                        10054,  # Windows
+                    ):
+                        # Connection reset by peer
+                        await asyncio.sleep(1.5)
+                        continue
+                    raise
+
+                if rate_limiter:
+                    await rate_limiter.on_response(route, path, response)
+            finally:
                 if blocker:
                     await blocker.decrement()
 
