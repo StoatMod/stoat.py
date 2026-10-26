@@ -3870,8 +3870,8 @@ class HTTPClient:
 
             If ``None`` or ``UNDEFINED``, the currently assigned channel node will be used.
 
-            If the channel has no node assigned,
-            you should query the instance's information with :meth:`query_node` and use the closest node returned.
+            If channel has no node assigned, you should discover existing voice nodes via :meth:`query_node`
+            (on official instances, you generally currently should use ``worldwide``). Otherwise, this will throw an ``UnknownNode`` error.
 
             .. versionadded:: 1.2
         force_disconnect: UndefinedOr[Optional[:class:`bool`]]
@@ -6035,7 +6035,6 @@ class HTTPClient:
                 server_id=resolve_id(server),
                 category_id=resolve_id(category),
             ),
-            json=payload,
             http_overrides=http_overrides,
         )
         return self.state.parser.parse_category(resp)
@@ -6499,7 +6498,7 @@ class HTTPClient:
         timeout: UndefinedOr[typing.Optional[typing.Union[datetime, timedelta, float, int]]] = UNDEFINED,
         can_publish: UndefinedOr[typing.Optional[bool]] = UNDEFINED,
         can_receive: UndefinedOr[typing.Optional[bool]] = UNDEFINED,
-        voice: UndefinedOr[typing.Optional[ULIDOr[typing.Union[TextChannel, VoiceChannel]]]] = UNDEFINED,
+        voice: UndefinedOr[ULIDOr[typing.Union[TextChannel, VoiceChannel]]] = UNDEFINED,
     ) -> Member:
         """|coro|
 
@@ -6553,14 +6552,10 @@ class HTTPClient:
             Whether the member should receive voice data.
 
             You must have :attr:`~Permissions.deafen_members` to provide this.
-        voice: UndefinedOr[Optional[ULIDOr[Union[:class:`TextChannel`, :class:`VoiceChannel`]]]]
+        voice: UndefinedOr[ULIDOr[Union[:class:`TextChannel`, :class:`VoiceChannel`]]]
             The voice channel to move the member to.
 
             You must have :attr:`~Permissions.move_members` to provide this.
-
-            .. versionchanged:: 1.3
-
-                Members can be kicked from the current voice channel.
 
         Raises
         ------
@@ -6668,11 +6663,7 @@ class HTTPClient:
                 payload['can_receive'] = can_receive
 
         if voice is not UNDEFINED:
-            # While specifying both remove and voice channel can cause an InvalidOperation error, this should be not possible
-            if voice is None:
-                remove.append('VoiceChannel')
-            else:
-                payload['voice_channel'] = resolve_id(voice)
+            payload['voice_channel'] = resolve_id(voice)
 
         if len(remove) > 0:
             payload['remove'] = remove
@@ -7332,7 +7323,6 @@ class HTTPClient:
         *,
         http_overrides: typing.Optional[HTTPOverrideOptions] = None,
         name: UndefinedOr[str] = UNDEFINED,
-        icon: UndefinedOr[typing.Optional[ResolvableResource]] = UNDEFINED,
         color: UndefinedOr[typing.Optional[str]] = UNDEFINED,
         hoist: UndefinedOr[bool] = UNDEFINED,
         rank: UndefinedOr[int] = UNDEFINED,
@@ -7355,10 +7345,6 @@ class HTTPClient:
             The HTTP request overrides.
         name: UndefinedOr[:class:`str`]
             The new role name. Must be between 1 and 32 characters long.
-        icon: UndefinedOr[Optional[:class:`ResolvableResource`]]
-            The new role icon.
-
-            .. versionadded:: 1.3
         color: UndefinedOr[Optional[:class:`str`]]
             The new role color. Must be a valid CSS color.
         hoist: UndefinedOr[:class:`bool`]
@@ -7396,11 +7382,11 @@ class HTTPClient:
         :class:`NotFound`
             Possible values for :attr:`~HTTPException.type`:
 
-            +--------------+-------------------------------------+
-            | Value        | Reason                              |
-            +--------------+-------------------------------------+
-            | ``NotFound`` | The server/role/file was not found. |
-            +--------------+-------------------------------------+
+            +--------------+--------------------------------+
+            | Value        | Reason                         |
+            +--------------+--------------------------------+
+            | ``NotFound`` | The server/role was not found. |
+            +--------------+--------------------------------+
         :class:`InternalServerError`
             Possible values for :attr:`~HTTPException.type`:
 
@@ -7420,11 +7406,6 @@ class HTTPClient:
 
         if name is not UNDEFINED:
             payload['name'] = name
-        if icon is not UNDEFINED:
-            if icon is None:
-                remove.append('Icon')
-            else:
-                payload['icon'] = await resolve_resource(self.state, icon, tag='icons')
         if color is not UNDEFINED:
             if color is None:
                 remove.append('Colour')
